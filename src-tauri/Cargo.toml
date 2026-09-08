@@ -1,0 +1,32 @@
+[package]
+name = "agenthub"
+version = "0.1.0"
+description = "Multi-agent CLI manager desktop app"
+authors = ["AgentHub"]
+edition = "2021"
+
+[lib]
+name = "agenthub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-os = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+serde_yaml = "0.9"
+portable-pty = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["full"] }
+base64 = "0.22"
+glob = "0.3"
+dirs = "6"
+which = "7"
+uuid = { version = "1", features = ["v4"] }
+# fix-path-env not available on crates.io; PATH fix is done manually in lib.rs

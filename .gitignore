@@ -1,0 +1,12 @@
+# Node / Vite
+node_modules/
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Env & OS
+.env
+.env.*
+.DS_Store

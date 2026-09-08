@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f7;
+  --bg-hover: #f0f0f3;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #aeaeb2;
+  --accent-blue: #4f6ef7;
+  --accent-green: #34c759;
+  --accent-yellow: #ff9f0a;
+  --accent-red: #ff3b30;
+  --border: #e5e5ea;
+  --border-light: #f0f0f3;
+  --shadow-xs: 0 0.5px 1px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.03);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+}
+
+/* Tailwind v4 preflight already resets margins/paddings.
+   ⚠️ Do NOT add an unlayered `* { margin:0; padding:0 }` reset here:
+   unlayered CSS beats @layer utilities, which would kill all px-*/py-*/m-* classes. */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { height: 100vh; display: flex; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d1d6; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #aeaeb2; }
+
+input:focus, input:focus-visible {
+  outline: none;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 3px rgba(79,110,247,0.08) !important;
+}
+
+/* Checkbox custom */
+input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+}
+
+/* Transition helper */
+.transition-smooth {
+  transition: all 0.15s ease;
+}
