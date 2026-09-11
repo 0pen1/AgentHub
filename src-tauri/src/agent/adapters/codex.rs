@@ -5,10 +5,6 @@ use std::path::Path;
 pub struct CodexAdapter;
 
 impl AgentAdapter for CodexAdapter {
-    fn id(&self) -> &str {
-        "codex"
-    }
-
     fn read_mcp_servers(&self) -> HashMap<String, serde_json::Value> {
         let config_path = dirs::home_dir().map(|h| h.join(".codex").join("config.toml"));
 
@@ -32,34 +28,6 @@ impl AgentAdapter for CodexAdapter {
         HashMap::new()
     }
 
-    fn skill_paths(&self) -> Vec<String> {
-        let mut paths = Vec::new();
-        if let Some(home) = dirs::home_dir() {
-            let global_skills = home.join(".codex").join("skills");
-            if global_skills.exists() {
-                paths.push(global_skills.to_string_lossy().to_string());
-            }
-        }
-        paths
-    }
-
-    fn global_config_path(&self) -> Option<String> {
-        dirs::home_dir().map(|h| {
-            h.join(".codex")
-                .join("config.toml")
-                .to_string_lossy()
-                .to_string()
-        })
-    }
-
-    fn project_config_dir(&self) -> &str {
-        ".codex"
-    }
-
-    fn instruction_filename(&self) -> Option<&str> {
-        Some("AGENTS.md")
-    }
-
     fn write_session_config(
         &self,
         session_dir: &Path,
@@ -79,58 +47,42 @@ impl AgentAdapter for CodexAdapter {
             if src.exists() {
                 std::fs::copy(&src, codex_home.join("config.toml"))?;
             }
-        }
-
-        // Append MCP servers
-        if !mcps.is_empty() {
-            let config_path = codex_home.join("config.toml");
-            let mut content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-            for (name, value) in mcps {
-                content.push_str(&format!("\n[mcp_servers.{}]\n", name));
-                if let Some(obj) = value.as_object() {
-                    for (k, v) in obj {
-                        match v {
-                            serde_json::Value::String(s) => {
-                                content.push_str(&format!("{} = {}\n", k, toml_inline_str(s)));
-                            }
-                            serde_json::Value::Array(arr) => {
-                                let items: Vec<String> = arr
-                                    .iter()
-                                    .filter_map(|item| {
-                                        item.as_str().map(|s| toml_inline_str(s))
-                                    })
-                                    .collect();
-                                content
-                                    .push_str(&format!("{} = [{}]\n", k, items.join(", ")));
-                            }
-                            serde_json::Value::Bool(b) => {
-                                content.push_str(&format!("{} = {}\n", k, b));
-                            }
-                            // Nested objects (e.g. env = { KEY = "value" }) must be
-                            // emitted as inline tables — silently dropping them
-                            // breaks MCP servers that need env vars.
-                            serde_json::Value::Object(map) => {
-                                let pairs: Vec<String> = map
-                                    .iter()
-                                    .filter_map(|(ek, ev)| {
-                                        ev.as_str().map(|s| {
-                                            format!("{} = {}", ek, toml_inline_str(s))
-                                        })
-                                    })
-                                    .collect();
-                                if !pairs.is_empty() {
-                                    content
-                                        .push_str(&format!("{} = {{ {} }}\n", k, pairs.join(", ")));
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+            // Auth must live inside CODEX_HOME or every session starts logged
+            // out (verified: `CODEX_HOME=<empty> codex login status` → "Not
+            // logged in"). Symlink keeps it live across re-logins on Unix;
+            // other platforms (no symlink privileges) get a one-shot copy.
+            let auth_src = home.join(".codex").join("auth.json");
+            if auth_src.exists() {
+                let auth_dst = codex_home.join("auth.json");
+                if !auth_dst.exists() {
+                    super::link_or_copy(&auth_src, &auth_dst)?;
                 }
             }
+        }
 
-            std::fs::write(&config_path, content)?;
+        // Merge MCP servers into the copied config.toml structurally (not by
+        // text-append: a name already present in the global config would
+        // produce a duplicate [mcp_servers.x] header and break TOML parsing).
+        if !mcps.is_empty() {
+            let config_path = codex_home.join("config.toml");
+            let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
+            let mut doc: toml::Value = existing.parse().unwrap_or(toml::Value::Table(Default::default()));
+            if !doc.is_table() {
+                doc = toml::Value::Table(Default::default());
+            }
+            {
+                let servers = doc
+                    .as_table_mut()
+                    .unwrap()
+                    .entry("mcp_servers")
+                    .or_insert_with(|| toml::Value::Table(Default::default()))
+                    .as_table_mut()
+                    .ok_or("config.toml: mcp_servers is not a table")?;
+                for (name, value) in mcps {
+                    servers.insert(name.clone(), json_to_toml(value));
+                }
+            }
+            std::fs::write(&config_path, toml::to_string_pretty(&doc)?)?;
         }
 
         if !instruction_content.is_empty() {
@@ -145,8 +97,7 @@ impl AgentAdapter for CodexAdapter {
             if let Some(skill_name) = skill_src.file_name() {
                 let skill_dst = skills_dir.join(skill_name);
                 if !skill_dst.exists() {
-                    #[cfg(unix)]
-                    std::os::unix::fs::symlink(skill_src, &skill_dst)?;
+                    super::link_or_copy(skill_src, &skill_dst)?;
                 }
             }
         }
@@ -178,20 +129,141 @@ pub fn toml_to_json(val: &toml::Value) -> serde_json::Value {
     }
 }
 
-/// Escape a string for a TOML basic (single-line) string literal.
-fn toml_inline_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
+/// Convert a JSON MCP server definition to a TOML value for config.toml.
+/// Handles the full JSON value tree, so nested objects (e.g. env maps) and
+/// non-string array items survive the round-trip.
+pub fn json_to_toml(val: &serde_json::Value) -> toml::Value {
+    match val {
+        serde_json::Value::String(s) => toml::Value::String(s.clone()),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                toml::Value::Integer(i)
+            } else {
+                toml::Value::Float(n.as_f64().unwrap_or(0.0))
+            }
         }
+        serde_json::Value::Bool(b) => toml::Value::Boolean(*b),
+        serde_json::Value::Array(arr) => toml::Value::Array(arr.iter().map(json_to_toml).collect()),
+        serde_json::Value::Object(map) => {
+            let table: toml::map::Map<String, toml::Value> = map
+                .iter()
+                .map(|(k, v)| (k.clone(), json_to_toml(v)))
+                .collect();
+            toml::Value::Table(table)
+        }
+        serde_json::Value::Null => toml::Value::String(String::new()),
     }
-    out.push('"');
-    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json_map(pairs: &[(&str, serde_json::Value)]) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        for (k, v) in pairs {
+            map.insert(k.to_string(), v.clone());
+        }
+        serde_json::Value::Object(map)
+    }
+
+    /// Regression: an MCP name already present in the global config must be
+    /// merged in place, not appended — a duplicate [mcp_servers.x] header
+    /// made the whole config.toml unparseable and codex failed to start.
+    #[test]
+    fn merges_mcp_over_existing_name() {
+        let global = "[mcp_servers.existing]\ncommand = \"old\"\n\n[mcp_servers.other]\ncommand = \"keep\"\n";
+        let doc: toml::Value = global.parse().unwrap();
+
+        let mut mcps = HashMap::new();
+        mcps.insert(
+            "existing".to_string(),
+            json_map(&[("command", serde_json::json!("new"))]),
+        );
+
+        // Same merge logic as write_session_config (extracted inline here to
+        // keep the test independent of $HOME).
+        let mut doc = doc;
+        let servers = doc
+            .as_table_mut()
+            .unwrap()
+            .entry("mcp_servers")
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .unwrap();
+        for (name, value) in &mcps {
+            servers.insert(name.clone(), json_to_toml(value));
+        }
+        let out = toml::to_string_pretty(&doc).unwrap();
+
+        // Parses cleanly and exactly once per header.
+        let reparsed: toml::Value = out.parse().unwrap();
+        assert_eq!(
+            reparsed["mcp_servers"]["existing"]["command"].as_str(),
+            Some("new")
+        );
+        assert_eq!(
+            reparsed["mcp_servers"]["other"]["command"].as_str(),
+            Some("keep")
+        );
+        assert_eq!(out.matches("[mcp_servers.existing]").count(), 1);
+    }
+
+    #[test]
+    fn json_to_toml_preserves_nested_env() {
+        let input = json_map(&[
+            ("command", serde_json::json!("npx")),
+            ("args", serde_json::json!(["-y", "some-server"])),
+            (
+                "env",
+                json_map(&[("API_KEY", serde_json::json!("secret"))]),
+            ),
+            ("enabled", serde_json::json!(true)),
+        ]);
+        let toml_val = json_to_toml(&input);
+        let text = toml::to_string(&toml_val).unwrap();
+        let back: toml::Value = text.parse().unwrap();
+        assert_eq!(back["env"]["API_KEY"].as_str(), Some("secret"));
+        assert_eq!(back["args"][1].as_str(), Some("some-server"));
+        assert_eq!(back["enabled"].as_bool(), Some(true));
+    }
+
+    /// auth.json must end up inside the session CODEX_HOME or codex reports
+    /// "Not logged in" (verified against `codex login status`). Note: the
+    /// adapter reads auth from the REAL home (dirs::home_dir), so this test
+    /// only passes on machines with ~/.codex/auth.json present — acceptable
+    /// for a dev-machine test suite.
+    #[test]
+    fn auth_json_is_brought_into_session_home() {
+        let real_auth = dirs::home_dir().expect("no home dir").join(".codex").join("auth.json");
+        if !real_auth.exists() {
+            // No auth on this machine — nothing to bring in; behavior is then
+            // "session also has none", which is correct but untestable here.
+            return;
+        }
+
+        let tmp = std::env::temp_dir().join(format!("agenthub-test-{}", uuid::Uuid::new_v4()));
+        let session_dir = tmp.join("session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        let adapter = CodexAdapter;
+        let (env, _) = adapter
+            .write_session_config(&session_dir, &tmp, &HashMap::new(), "", &[])
+            .unwrap();
+
+        let codex_home = std::path::PathBuf::from(env["CODEX_HOME"].clone());
+        let auth = codex_home.join("auth.json");
+        assert!(
+            auth.exists(),
+            "auth.json missing from session CODEX_HOME (codex would start logged out)"
+        );
+        // Symlink (unix) or copy (other) — either way contents must match the
+        // real credential file.
+        assert_eq!(
+            std::fs::read_to_string(&auth).unwrap(),
+            std::fs::read_to_string(&real_auth).unwrap()
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
 }

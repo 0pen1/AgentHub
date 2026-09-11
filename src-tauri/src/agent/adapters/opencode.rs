@@ -5,10 +5,6 @@ use std::path::Path;
 pub struct OpenCodeAdapter;
 
 impl AgentAdapter for OpenCodeAdapter {
-    fn id(&self) -> &str {
-        "opencode"
-    }
-
     fn read_mcp_servers(&self) -> HashMap<String, serde_json::Value> {
         let config_path =
             dirs::home_dir().map(|h| h.join(".config").join("opencode").join("opencode.json"));
@@ -23,41 +19,6 @@ impl AgentAdapter for OpenCodeAdapter {
             }
         }
         HashMap::new()
-    }
-
-    fn skill_paths(&self) -> Vec<String> {
-        let mut paths = Vec::new();
-        if let Some(home) = dirs::home_dir() {
-            for dir in &[
-                ".config/opencode/skills",
-                ".agents/skills",
-                ".claude/skills",
-            ] {
-                let p = home.join(dir);
-                if p.exists() {
-                    paths.push(p.to_string_lossy().to_string());
-                }
-            }
-        }
-        paths
-    }
-
-    fn global_config_path(&self) -> Option<String> {
-        dirs::home_dir().map(|h| {
-            h.join(".config")
-                .join("opencode")
-                .join("opencode.json")
-                .to_string_lossy()
-                .to_string()
-        })
-    }
-
-    fn project_config_dir(&self) -> &str {
-        ".opencode"
-    }
-
-    fn instruction_filename(&self) -> Option<&str> {
-        None
     }
 
     fn write_session_config(

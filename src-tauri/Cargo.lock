@@ -15,6 +15,7 @@ dependencies = [
  "base64 0.22.1",
  "dirs",
  "glob",
+ "libc",
  "portable-pty",
  "rusqlite",
  "serde",

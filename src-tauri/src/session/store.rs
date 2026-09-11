@@ -159,7 +159,7 @@ impl SessionStore {
             Err(_) => return vec![],
         };
 
-        stmt.query_map([], |row| {
+        let rows = stmt.query_map([], |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
@@ -169,16 +169,31 @@ impl SessionStore {
                 row.get(5)?,
                 row.get(6)?,
             ))
-        })
-        .unwrap_or_else(|_| panic!("query failed"))
-        .filter_map(|r| r.ok())
-        .collect()
+        });
+        match rows {
+            // A broken query must not take the app down — return nothing.
+            Err(_) => vec![],
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        }
     }
 
     pub fn delete_session(&self, id: &str) -> Result<(), rusqlite::Error> {
         self.conn
             .execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
         Ok(())
+    }
+
+    /// All session ids (for scrollback snapshot GC at startup).
+    pub fn all_session_ids(&self) -> std::collections::HashSet<String> {
+        let mut stmt = match self.conn.prepare("SELECT id FROM sessions") {
+            Ok(s) => s,
+            Err(_) => return Default::default(),
+        };
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0));
+        match rows {
+            Err(_) => Default::default(),
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        }
     }
 
     // --- Presets (experts: fixed agent + skill/mcp/prompt combos) ------------

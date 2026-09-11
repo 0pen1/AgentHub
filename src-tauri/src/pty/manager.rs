@@ -176,9 +176,19 @@ impl PtyManager {
 
     pub fn kill(&mut self, session_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mut session) = self.sessions.remove(session_id) {
-            session.child.kill()?;
+            graceful_kill(&mut session);
         }
         Ok(())
+    }
+
+    /// Gracefully terminate every live PTY (app shutdown). Best-effort: a
+    /// session that resists SIGTERM still gets SIGKILL'd via graceful_kill's
+    /// escalation, but nothing here blocks shutdown indefinitely — the wait
+    /// is capped per session inside graceful_kill.
+    pub fn kill_all(&mut self) {
+        for (_, mut session) in self.sessions.drain() {
+            graceful_kill(&mut session);
+        }
     }
 
     /// Remove a session's PTY without killing (used by restart to clear stale entries)
@@ -200,4 +210,34 @@ impl PtyManager {
         let reader = session.master.try_clone_reader()?;
         Ok(reader)
     }
+}
+
+/// Escalating termination: close the PTY writer (EOF — TUI agents exit their
+/// input loop cleanly), then SIGTERM, then SIGKILL after a short grace period.
+/// `ChildKiller::kill` is SIGKILL-strength on Unix, so it is the LAST resort,
+/// not the first — agents get a chance to flush conversation state.
+fn graceful_kill(session: &mut PtySession) {
+    // 1. EOF: closing the master-side writer makes the child's stdin read
+    //    return EOF, which interactive CLIs treat as "exit".
+    {
+        let mut writer = session.writer.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = writer.flush();
+    }
+
+    // 2. SIGTERM and wait briefly for a natural exit.
+    #[cfg(unix)]
+    if let Some(pid) = session.child.process_id() {
+        // SAFETY: sending SIGTERM to a pid we own (spawned via our PTY).
+        let _ = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(3000);
+        while std::time::Instant::now() < deadline {
+            if let Ok(Some(_)) = session.child.try_wait() {
+                return; // exited on its own
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
+    // 3. Still alive — SIGKILL via portable-pty's killer.
+    let _ = session.child.kill();
 }

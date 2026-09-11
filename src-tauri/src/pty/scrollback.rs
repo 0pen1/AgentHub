@@ -63,6 +63,7 @@ impl ScrollbackBuffer {
     }
 
     /// Replace contents with a snapshot read back from disk.
+    #[allow(dead_code)] // kept: symmetry with snapshot(); used by tests
     pub fn restore(&mut self, data: Vec<u8>) {
         self.chunks.clear();
         self.total = 0;
@@ -241,6 +242,31 @@ fn skip_escape(data: &[u8], i: usize) -> usize {
 pub fn delete_snapshot(session_id: &str) {
     if let Some(path) = snapshot_path(session_id) {
         let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Garbage-collect snapshots whose sessions no longer exist in the DB.
+/// Snapshots are only ever written for known session ids, so anything left
+/// over (crashes, manual ~/.agenthub fiddling, pre-delete failures) is stale
+/// by definition. Called once at app startup; best-effort throughout.
+pub fn gc_snapshots(live_ids: &std::collections::HashSet<String>) {
+    let Some(root) = snapshot_root() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(id) = name.strip_suffix(".bin") else {
+            continue;
+        };
+        if !live_ids.contains(id) {
+            let _ = std::fs::remove_file(entry.path());
+        }
     }
 }
 

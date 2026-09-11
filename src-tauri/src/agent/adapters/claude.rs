@@ -5,10 +5,6 @@ use std::path::Path;
 pub struct ClaudeAdapter;
 
 impl AgentAdapter for ClaudeAdapter {
-    fn id(&self) -> &str {
-        "claude"
-    }
-
     fn read_mcp_servers(&self) -> HashMap<String, serde_json::Value> {
         // Claude Code stores global MCP servers in ~/.claude.json (NOT settings.json)
         let mut result = HashMap::new();
@@ -39,34 +35,6 @@ impl AgentAdapter for ClaudeAdapter {
         }
 
         result
-    }
-
-    fn skill_paths(&self) -> Vec<String> {
-        let mut paths = Vec::new();
-        if let Some(home) = dirs::home_dir() {
-            let global_skills = home.join(".claude").join("skills");
-            if global_skills.exists() {
-                paths.push(global_skills.to_string_lossy().to_string());
-            }
-        }
-        paths
-    }
-
-    fn global_config_path(&self) -> Option<String> {
-        dirs::home_dir().map(|h| {
-            h.join(".claude")
-                .join("settings.json")
-                .to_string_lossy()
-                .to_string()
-        })
-    }
-
-    fn project_config_dir(&self) -> &str {
-        ".claude"
-    }
-
-    fn instruction_filename(&self) -> Option<&str> {
-        Some("CLAUDE.md")
     }
 
     fn write_session_config(
@@ -111,8 +79,7 @@ impl AgentAdapter for ClaudeAdapter {
                 if let Some(skill_name) = skill_src.file_name() {
                     let skill_dst = plugin_skills_dir.join(skill_name);
                     if !skill_dst.exists() {
-                        #[cfg(unix)]
-                        std::os::unix::fs::symlink(skill_src, &skill_dst)?;
+                        super::link_or_copy(skill_src, &skill_dst)?;
                     }
                 }
             }
@@ -212,5 +179,38 @@ fn strip_agenthub_block(content: &str) -> String {
             format!("{}{}", head.trim_end(), tail)
         }
         _ => content.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Re-injection (restart / relaunch in same dir) must REPLACE the old
+    /// block, not append a second one — duplicated instructions were a real
+    /// bug class before the marker scheme existed.
+    #[test]
+    fn strip_removes_previous_block() {
+        let existing = "user content\n\n<!-- agenthub:session-instructions:start -->\nold instructions\n<!-- agenthub:session-instructions:end -->\n";
+        let cleaned = strip_agenthub_block(existing);
+        // Trailing newline from the old block's tail survives the strip; the
+        // re-inject path trim_end()s again before writing, so this is fine.
+        assert_eq!(cleaned.trim_end(), "user content");
+        assert!(!cleaned.contains("old instructions"));
+        assert!(!cleaned.contains(BLOCK_START));
+    }
+
+    #[test]
+    fn strip_keeps_content_without_block() {
+        let existing = "# My project\nCustom CLAUDE.md rules here.";
+        assert_eq!(strip_agenthub_block(existing), existing);
+    }
+
+    #[test]
+    fn strip_handles_unterminated_block() {
+        // Missing END marker: leave content untouched rather than eating
+        // everything after START.
+        let existing = "keep me\n<!-- agenthub:session-instructions:start -->\nno end";
+        assert_eq!(strip_agenthub_block(existing), existing);
     }
 }

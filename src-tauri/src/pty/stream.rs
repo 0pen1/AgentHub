@@ -28,6 +28,7 @@ fn emit_chunk(app: &AppHandle, session_id: &str, buffers: &ScrollbackMap, data: 
 }
 
 /// Persist one session's tail buffer to disk (best-effort).
+#[allow(dead_code)] // reserved for future per-session flush (e.g. on tab close)
 pub fn persist_session(app: &AppHandle, session_id: &str) {
     if let Some(buffers) = app.try_state::<ScrollbackMap>() {
         if let Ok(map) = buffers.0.lock() {

@@ -268,6 +268,15 @@ pub fn launch_session(
     let agent = registry
         .get_agent(&config.agent_id)
         .ok_or("Agent not found")?;
+    // Cheap installed check (cached, no version probe): failing here leaves no
+    // zombie "running" DB row, and the user gets an actionable error instead of
+    // a green dot for a session that can never spawn.
+    if !registry.is_agent_installed(&config.agent_id) {
+        return Err(format!(
+            "{} 未安装或不在 PATH 中（executable: {}）",
+            agent.name, agent.executable
+        ));
+    }
 
     {
         let mut pty_mgr = pty_state.lock().map_err(|e| e.to_string())?;
@@ -398,6 +407,7 @@ pub fn pty_attach(
     cols: u16,
     rows: u16,
     pty_state: State<'_, Mutex<PtyManager>>,
+    session_state: State<'_, Mutex<SessionStore>>,
 ) -> Result<(), String> {
     let mut pty_mgr = pty_state.lock().map_err(|e| e.to_string())?;
 
@@ -406,9 +416,16 @@ pub fn pty_attach(
         return Ok(());
     }
 
-    pty_mgr
-        .spawn_prepared(&session_id, cols, rows)
-        .map_err(|e| e.to_string())?;
+    if let Err(e) = pty_mgr.spawn_prepared(&session_id, cols, rows) {
+        // Spawn failed (e.g. CLI uninstalled since launch was staged): the DB
+        // says "running" from launch_session — flip it so the UI doesn't show
+        // a green dot for a session that never started.
+        if let Ok(store) = session_state.lock() {
+            let _ = store.update_status_if_running(&session_id, "exited");
+        }
+        let _ = app.emit("sessions-changed", ());
+        return Err(e.to_string());
+    }
 
     // Start streaming PTY output to the frontend
     if let Ok(reader) = pty_mgr.get_reader(&session_id) {
