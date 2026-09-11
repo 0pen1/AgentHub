@@ -90,7 +90,7 @@ export default function LibraryCard({
   return (
     <div
       onClick={onOpen}
-      className="group relative rounded-2xl border p-4 cursor-pointer transition-all hover:shadow-sm"
+      className="group relative rounded-2xl border p-4 cursor-pointer transition-all hover:shadow-sm flex flex-col h-full"
       style={{
         background: 'var(--bg-secondary)',
         borderColor: 'var(--border-light)',
@@ -131,9 +131,9 @@ export default function LibraryCard({
           {icon}
         </div>
         <div className="min-w-0 flex-1 pr-6">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <h3
-              className="text-[13px] font-medium truncate"
+              className="text-[13px] font-medium truncate min-w-0"
               style={{ color: 'var(--text-primary)' }}
               title={title}
             >
@@ -153,15 +153,19 @@ export default function LibraryCard({
         </div>
       </div>
 
+      {/* Description: always exactly two lines tall */}
       <p
-        className="text-[12px] mt-2 line-clamp-2 min-h-[2.4em]"
+        className="text-[12px] leading-[1.5] mt-2 line-clamp-2 h-[3em] overflow-hidden"
         style={{ color: 'var(--text-secondary)' }}
         title={description}
       >
         {description || <span style={{ color: 'var(--text-muted)' }}>暂无描述</span>}
       </p>
 
-      <TagChips tags={tags || []} activeTag={activeTag} onTagClick={onTagClick} />
+      {/* Tag slot: fixed height so no-tag cards align with tagged ones */}
+      <div className="min-h-[28px] overflow-hidden mt-auto">
+        <TagChips tags={tags || []} activeTag={activeTag} onTagClick={onTagClick} />
+      </div>
     </div>
   );
 }

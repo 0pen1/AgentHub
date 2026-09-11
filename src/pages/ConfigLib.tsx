@@ -676,7 +676,7 @@ export default function ConfigLib() {
     <button
       key="__new__"
       onClick={onClick}
-      className="rounded-2xl border border-dashed p-4 flex flex-col items-center justify-center gap-1.5 min-h-[120px] transition-colors hover:bg-[var(--bg-tertiary)]"
+      className="rounded-2xl border border-dashed p-4 flex flex-col items-center justify-center gap-1.5 min-h-[120px] h-full transition-colors hover:bg-[var(--bg-tertiary)]"
       style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
     >
       <Plus size={18} />
