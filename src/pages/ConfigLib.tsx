@@ -15,6 +15,8 @@ import ExpertForm, {
   type ExpertFormValue,
 } from "../components/config/ExpertForm";
 import type { InstructionInfo } from "../components/InstructionPicker";
+import { copyText } from "../lib/clipboard";
+import { stripFrontmatter } from "../components/PromptPanel";
 
 export interface SkillInfo {
   name: string;
@@ -75,7 +77,7 @@ const TABS: { id: Tab; label: string; icon: typeof Puzzle }[] = [
   { id: "experts", label: "专家", icon: Bot },
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "mcps", label: "MCP 服务器", icon: Plug },
-  { id: "instructions", label: "提示词", icon: FileText },
+  { id: "instructions", label: "系统指令", icon: FileText },
 ];
 
 const inputStyle = {
@@ -135,6 +137,8 @@ export default function ConfigLib() {
   const [instEditing, setInstEditing] = useState(false);
   const [instCreating, setInstCreating] = useState(false);
   const [instForm, setInstForm] = useState({ name: "", content: "" });
+  // Name of the instruction whose content was just copied (feedback icon).
+  const [copiedInst, setCopiedInst] = useState<string | null>(null);
 
   // Experts
   const [presets, setPresets] = useState<PresetInfo[]>([]);
@@ -446,6 +450,20 @@ export default function ConfigLib() {
 
   // ---------------- Instruction handlers ----------------
 
+  const copyInst = async (name: string) => {
+    try {
+      const detail = await invoke<{ name: string; path: string; content: string }>(
+        "read_library_instruction",
+        { name },
+      );
+      await copyText(stripFrontmatter(detail.content));
+      setCopiedInst(name);
+      setTimeout(() => setCopiedInst((c) => (c === name ? null : c)), 1500);
+    } catch (err) {
+      alert(err);
+    }
+  };
+
   const startCreateInst = () => {
     setActiveInst(null);
     setInstCreating(true);
@@ -491,7 +509,7 @@ export default function ConfigLib() {
   };
 
   const deleteInst = async (name: string) => {
-    if (!confirm(`删除提示词「${name}」？`)) return;
+    if (!confirm(`删除系统指令「${name}」？`)) return;
     try {
       await invoke("delete_library_instruction", { name });
       if (activeInst === name) setActiveInst(null);
@@ -511,7 +529,7 @@ export default function ConfigLib() {
     try {
       const imported = await invoke<string[]>("import_library_instructions", { paths });
       await loadInstructions();
-      alert(imported.length ? `已导入 ${imported.length} 个提示词` : "没有新导入(重名跳过)");
+      alert(imported.length ? `已导入 ${imported.length} 个系统指令` : "没有新导入(重名跳过)");
     } catch (err) {
       alert(err);
     }
@@ -776,7 +794,7 @@ export default function ConfigLib() {
                     />
                   </div>
                   {presets.length === 0 ? (
-                    <EmptyHint text="还没有专家 — 创建一个,把常用的 agent + skills + MCP + 提示词组合固定下来" />
+                    <EmptyHint text="还没有专家 — 创建一个,把常用的 agent + skills + MCP + 系统指令组合固定下来" />
                   ) : (
                     cardGrid(
                       <>
@@ -1295,7 +1313,7 @@ export default function ConfigLib() {
               {instEditing ? (
                 <div className="max-w-2xl mx-auto">
                   {renderEditorHeader(
-                    instCreating ? "新建提示词" : "编辑提示词",
+                    instCreating ? "新建系统指令" : "编辑系统指令",
                     <>
                       <button onClick={() => { setInstEditing(false); setInstCreating(false); }}
                         className={btnSecondary}
@@ -1337,7 +1355,7 @@ export default function ConfigLib() {
                     <CardWallToolbar
                       search={search}
                       onSearch={setSearch}
-                      placeholder="搜索提示词…"
+                      placeholder="搜索系统指令…"
                       allTags={instTags}
                       activeTag={activeTag}
                       onTagClick={setActiveTag}
@@ -1349,7 +1367,7 @@ export default function ConfigLib() {
                           </button>
                           <button onClick={startCreateInst} className={btnPrimary}
                             style={{ background: 'var(--accent-blue)' }}>
-                            新建提示词
+                            新建系统指令
                           </button>
                         </>
                       }
@@ -1357,7 +1375,7 @@ export default function ConfigLib() {
                   </div>
 
                   {instructions.length === 0 ? (
-                    <EmptyHint text="提示词库为空 — 新建或导入 .md 文件" />
+                    <EmptyHint text="系统指令库为空 — 新建或导入 .md 文件" />
                   ) : (
                     cardGrid(
                       <>
@@ -1374,9 +1392,11 @@ export default function ConfigLib() {
                             onOpen={() => startEditInst(i.name)}
                             onEdit={() => startEditInst(i.name)}
                             onDelete={() => deleteInst(i.name)}
+                            onCopy={() => copyInst(i.name)}
+                            copied={copiedInst === i.name}
                           />
                         ))}
-                        {newCard("新建提示词", startCreateInst)}
+                        {newCard("新建系统指令", startCreateInst)}
                       </>,
                     )
                   )}

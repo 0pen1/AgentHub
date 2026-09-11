@@ -150,6 +150,35 @@ pub fn import_library_instructions(paths: Vec<String>) -> Result<Vec<String>, St
     crate::config::library::import_instructions(&paths)
 }
 
+// ---------------------------------------------------------------------------
+// Prompt snippets (常用提示词收藏库 — distinct from session-injected instructions)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_prompts() -> Result<Vec<InstructionInfo>, String> {
+    crate::config::library::list_prompts()
+}
+
+#[tauri::command]
+pub fn read_prompt(name: String) -> Result<String, String> {
+    crate::config::library::read_prompt(&name)
+}
+
+#[tauri::command]
+pub fn create_prompt(name: String, content: String) -> Result<String, String> {
+    crate::config::library::create_prompt(&name, &content)
+}
+
+#[tauri::command]
+pub fn update_prompt(name: String, new_name: String, content: String) -> Result<String, String> {
+    crate::config::library::update_prompt(&name, &new_name, &content)
+}
+
+#[tauri::command]
+pub fn delete_prompt(name: String) -> Result<(), String> {
+    crate::config::library::delete_prompt(&name)
+}
+
 // Re-export for convenience of callers constructing inputs (unused now, but
 // keeps HashMap import meaningful if signatures evolve).
 #[allow(unused_imports)]

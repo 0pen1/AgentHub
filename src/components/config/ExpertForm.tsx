@@ -112,10 +112,10 @@ export default function ExpertForm({
               <Chip key={m.name} label={m.name} active={list.includes(m.name)} onClick={() => onToggle(m.name)} />
             ))
           ))}
-        {label === "提示词" &&
+        {label === "系统指令" &&
           (instructions.length === 0 ? (
             <span className="text-[11px] px-1" style={{ color: 'var(--text-muted)' }}>
-              还没有提示词
+              还没有系统指令
             </span>
           ) : (
             instructions.map((i) => (
@@ -269,7 +269,7 @@ export default function ExpertForm({
                   color: contentTab === t ? 'var(--text-primary)' : 'var(--text-muted)',
                 }}
               >
-                {t === "skills" ? "Skills" : t === "mcps" ? "MCP" : "提示词"}
+                {t === "skills" ? "Skills" : t === "mcps" ? "MCP" : "系统指令"}
               </button>
             ))}
           </div>
@@ -278,7 +278,7 @@ export default function ExpertForm({
           {contentTab === "mcps" &&
             chipsRow("MCP", form.mcps, (n) => setForm({ ...form, mcps: toggle(form.mcps, n) }))}
           {contentTab === "instructions" &&
-            chipsRow("提示词", form.instructions, (n) =>
+            chipsRow("系统指令", form.instructions, (n) =>
               setForm({ ...form, instructions: toggle(form.instructions, n) }))}
         </div>
       </div>

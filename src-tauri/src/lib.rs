@@ -115,6 +115,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             // Initialize session store
             let app_data_dir = app
@@ -200,6 +201,12 @@ pub fn run() {
             commands::list_presets,
             commands::save_preset,
             commands::delete_preset,
+            // Prompt snippets (常用提示词收藏)
+            commands::library::list_prompts,
+            commands::library::read_prompt,
+            commands::library::create_prompt,
+            commands::library::update_prompt,
+            commands::library::delete_prompt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

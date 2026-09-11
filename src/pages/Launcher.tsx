@@ -299,7 +299,7 @@ export default function Launcher() {
                               </div>
                               <div className="text-[11px] truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
                                 {p.description ||
-                                  `${p.skills.length} skill · ${p.mcps.length} MCP · ${p.instructions.length} 提示词`}
+                                  `${p.skills.length} skill · ${p.mcps.length} MCP · ${p.instructions.length} 系统指令`}
                               </div>
                             </div>
                             {p.work_dir && (
@@ -408,7 +408,7 @@ export default function Launcher() {
               >
                 能力配置
                 <span className="text-[11px] font-normal" style={{ color: "var(--text-muted)" }}>
-                  可选 — 为会话注入 Skills、MCP 与提示词
+                  可选 — 为会话注入 Skills、MCP 与系统指令
                 </span>
               </h2>
               <div className="flex items-center gap-1 p-1 rounded-xl w-fit mb-4" style={{ background: "var(--bg-tertiary)" }}>
@@ -419,7 +419,7 @@ export default function Launcher() {
                       : t === "mcps"
                       ? selectedMcps.length
                       : selectedInstructions.length;
-                  const label = t === "skills" ? "Skills" : t === "mcps" ? "MCP" : "提示词";
+                  const label = t === "skills" ? "Skills" : t === "mcps" ? "MCP" : "系统指令";
                   return (
                     <button
                       key={t}
@@ -515,7 +515,7 @@ export default function Launcher() {
                 <SummaryRow label="MCP">
                   <ChipList items={selectedMcps} />
                 </SummaryRow>
-                <SummaryRow label="提示词">
+                <SummaryRow label="系统指令">
                   <ChipList items={selectedInstructions} />
                 </SummaryRow>
               </div>

@@ -29,7 +29,7 @@ export default function InstructionPicker({ instructions, selected, onToggle, lo
     <div>
       <h2 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
         <FileText size={15} style={{ color: 'var(--text-muted)' }} />
-        提示词
+        系统指令
         {instructions.length > 0 && (
           <span className="text-xs font-normal px-1.5 py-0.5 rounded-md"
             style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
@@ -45,7 +45,7 @@ export default function InstructionPicker({ instructions, selected, onToggle, lo
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索提示词..."
+            placeholder="搜索系统指令..."
             className="w-full pl-9 pr-3 py-2 rounded-xl text-sm border outline-none transition-all"
             style={{
               background: 'var(--bg-primary)',
@@ -95,7 +95,7 @@ export default function InstructionPicker({ instructions, selected, onToggle, lo
         ))}
         {instructions.length === 0 && (
           <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>
-            提示词库为空，可在配置管理中添加
+            系统指令库为空，可在配置管理中添加
           </p>
         )}
         {instructions.length > 0 && filtered.length === 0 && (

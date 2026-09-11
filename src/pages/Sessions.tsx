@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { TerminalSquare, Plus, X } from "lucide-react";
+import { TerminalSquare, Plus, X, ClipboardList } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import SessionTree from "../components/SessionTree";
 import Terminal from "../components/Terminal";
+import PromptPanel from "../components/PromptPanel";
 
 export interface SessionInfo {
   id: string;
@@ -32,11 +33,35 @@ let notifyClosed: ((sessionId: string) => void) | null = null;
 // Set by the mounted Sessions page so the first PTY chunk can clear the
 // "starting up" loading state for the session being (re)started.
 let notifyFirstOutput: ((sessionId: string) => void) | null = null;
+// Per-session bracketed-paste (mode 2004) tracking, fed by PTY output scans.
+// Multi-line prompt sends are wrapped in 2004 markers ONLY when the child
+// enabled the mode — otherwise the markers would land as literal garbage.
+const pasteMode = new Map<string, boolean>();
+// Marker bytes scanned out of PTY chunks.
+const PASTE_ON = [0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x68]; // ESC [ ? 2 0 0 4 h
+const PASTE_OFF = [0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x6c]; // ESC [ ? 2 0 0 4 l
+
+function trackPasteMode(sessionId: string, data: Uint8Array) {
+  // Scan backwards for the most recent 8-byte marker (on or off).
+  for (let i = data.length - 8; i >= 0; i--) {
+    let on = true;
+    let off = true;
+    for (let j = 0; j < 8; j++) {
+      if (data[i + j] !== PASTE_ON[j]) on = false;
+      if (data[i + j] !== PASTE_OFF[j]) off = false;
+    }
+    if (on || off) {
+      pasteMode.set(sessionId, on);
+      return;
+    }
+  }
+}
 
 function handlePtyOutput(sessionId: string, b64: string) {
   if (!b64) return;
   notifyFirstOutput?.(sessionId);
   const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  trackPasteMode(sessionId, raw);
   const writeFn = writeFns.get(sessionId);
   if (writeFn) {
     // Terminal is mounted — write directly
@@ -83,6 +108,8 @@ export default function Sessions() {
   // reach the terminal (CLI startup + --resume of a big transcript can take
   // seconds — show it, don't sit on a black screen).
   const [starting, setStarting] = useState<Record<string, boolean>>({});
+  // Prompt panel (slide-out snippet picker over the terminal).
+  const [promptPanelOpen, setPromptPanelOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -217,6 +244,31 @@ export default function Sessions() {
     []
   );
 
+  // Send a prompt into the active session's PTY. Newline handling matters:
+  // TUI input boxes treat a bare \r as "submit", so multi-line prompts are
+  // wrapped in bracketed-paste markers — but ONLY when the child actually
+  // enabled mode 2004 (tracked from PTY output); otherwise the content is
+  // flattened to one line rather than injecting literal marker bytes.
+  const handlePromptSend = useCallback(
+    (content: string) => {
+      if (!activeSession) return;
+      const body = content.trimEnd();
+      const payload =
+        body.includes("\n") && pasteMode.get(activeSession)
+          ? `\x1b[200~${body}\x1b[201~\r`
+          : body.includes("\n")
+            ? body.replace(/\n/g, " ") + "\r"
+            : body + "\r";
+      invoke("pty_write", { sessionId: activeSession, data: payload }).catch(
+        (err) => {
+          console.error("pty_write failed:", err);
+          alert(`发送失败: ${err}`);
+        },
+      );
+    },
+    [activeSession]
+  );
+
   // Register the write function when a Terminal mounts
   const registerWriter = useCallback((sessionId: string, writeFn: (data: Uint8Array) => void) => {
     writeFns.set(sessionId, writeFn);
@@ -285,6 +337,16 @@ export default function Sessions() {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
+                    onClick={() => setPromptPanelOpen((v) => !v)}
+                    className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-tertiary)]"
+                    style={{
+                      color: promptPanelOpen ? 'var(--accent-blue)' : 'var(--text-muted)',
+                    }}
+                    title="提示词面板"
+                  >
+                    <ClipboardList size={15} />
+                  </button>
+                  <button
                     onClick={() => handleKill(activeSessionInfo.id)}
                     className="p-1.5 rounded-md transition-colors hover:bg-[var(--bg-tertiary)]"
                     style={{ color: 'var(--text-muted)' }}
@@ -326,6 +388,14 @@ export default function Sessions() {
                     </div>
                   </div>
                 )}
+
+                {/* Prompt snippet panel (slide-over, doesn't resize the terminal) */}
+                <PromptPanel
+                  open={promptPanelOpen}
+                  onClose={() => setPromptPanelOpen(false)}
+                  onSend={handlePromptSend}
+                  canSend={activeSessionInfo.status === "running"}
+                />
               </div>
             </>
           ) : (

@@ -886,6 +886,114 @@ pub fn delete_instruction(name: &str) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
+// ---------------------------------------------------------------------------
+// Prompt snippets (~/.agenthub/library/prompts/) — 常用提示词收藏库
+//
+// Distinct from instructions/: instructions are SESSION-INJECTED system
+// prompts (CLAUDE.md etc.); prompts/ is a personal clipboard of reusable
+// prompt fragments the user copies or sends into a running session from the
+// session prompt panel. No frontmatter needed — name = filename stem.
+// ---------------------------------------------------------------------------
+
+pub fn prompts_dir() -> PathBuf {
+    library_dir().join("prompts")
+}
+
+/// All prompt snippets, name alphabetical. Description = first non-empty,
+/// non-heading line (keeps the panel informative without frontmatter).
+pub fn list_prompts() -> Result<Vec<InstructionInfo>, String> {
+    let dir = prompts_dir();
+    let mut out = Vec::new();
+    if !dir.exists() {
+        return Ok(out);
+    }
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            (name.ends_with(".md")).then_some(name)
+        })
+        .collect();
+    names.sort();
+    for file_name in names {
+        let path = dir.join(&file_name);
+        let stem = file_name.trim_end_matches(".md").to_string();
+        let raw = std::fs::read_to_string(&path).unwrap_or_default();
+        let description = raw
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .unwrap_or("")
+            .to_string();
+        out.push(InstructionInfo {
+            name: stem,
+            path: path.to_string_lossy().to_string(),
+            description,
+            tags: Vec::new(),
+            source: LIBRARY_SOURCE.to_string(),
+        });
+    }
+    Ok(out)
+}
+
+pub fn read_prompt(name: &str) -> Result<String, String> {
+    validate_prompt_name(name)?;
+    let path = prompts_dir().join(format!("{}.md", name));
+    if !path.exists() {
+        return Err(format!("提示词不存在: {}", name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+pub fn create_prompt(name: &str, content: &str) -> Result<String, String> {
+    ensure_dirs()?;
+    std::fs::create_dir_all(prompts_dir()).map_err(|e| e.to_string())?;
+    let slug = slugify_name(name)?;
+    let path = prompts_dir().join(format!("{}.md", slug));
+    if path.exists() {
+        return Err(format!("同名提示词已存在: {}", slug));
+    }
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(slug)
+}
+
+pub fn update_prompt(name: &str, new_name: &str, content: &str) -> Result<String, String> {
+    validate_prompt_name(name)?;
+    let old_path = prompts_dir().join(format!("{}.md", name));
+    if !old_path.exists() {
+        return Err(format!("提示词不存在: {}", name));
+    }
+    let slug = slugify_name(new_name)?;
+    let new_path = prompts_dir().join(format!("{}.md", slug));
+    if slug != name && new_path.exists() {
+        return Err(format!("同名提示词已存在: {}", slug));
+    }
+    std::fs::write(&new_path, content).map_err(|e| e.to_string())?;
+    if slug != name {
+        std::fs::remove_file(&old_path).map_err(|e| e.to_string())?;
+    }
+    Ok(slug)
+}
+
+pub fn delete_prompt(name: &str) -> Result<(), String> {
+    validate_prompt_name(name)?;
+    let path = prompts_dir().join(format!("{}.md", name));
+    if !path.exists() {
+        return Err(format!("提示词不存在: {}", name));
+    }
+    std::fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
+/// Prompts live in one flat dir behind a validated slug — no path components
+/// allowed in the name.
+fn validate_prompt_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+        return Err(format!("非法的提示词名称: {}", name));
+    }
+    Ok(())
+}
+
 pub fn import_instructions(paths: &[String]) -> Result<Vec<String>, String> {
     ensure_dirs()?;
     let mut imported = Vec::new();
@@ -1207,5 +1315,42 @@ mod tests {
         assert!(read_instruction("test-inst").is_err());
         assert!(read_instruction("test-inst-renamed").is_ok());
         delete_instruction("test-inst-renamed").unwrap();
+    }
+
+    /// Tests in this module touch the REAL ~/.agenthub/library dir (the
+    /// storage functions have no injectable root). cargo runs tests in
+    /// parallel threads — serialize the ones that share instructions/ and
+    /// prompts/.
+    static LIB_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Prompt snippets live in their own dir — CRUD must not touch
+    /// instructions/ and names must round-trip through update/rename.
+    #[test]
+    fn prompt_crud_roundtrip() {
+        let _guard = LIB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = delete_prompt("pm-test");
+
+        create_prompt("pm test", "review this code").unwrap();
+        let list = list_prompts().unwrap();
+        let item = list.iter().find(|i| i.name == "pm-test").unwrap();
+        assert_eq!(item.description, "review this code");
+
+        // Duplicate rejected.
+        assert!(create_prompt("pm-test", "x").is_err());
+
+        update_prompt("pm-test", "pm-renamed", "new body").unwrap();
+        assert_eq!(read_prompt("pm-renamed").unwrap(), "new body");
+        assert!(read_prompt("pm-test").is_err());
+
+        delete_prompt("pm-renamed").unwrap();
+        assert!(read_prompt("pm-renamed").is_err());
+    }
+
+    #[test]
+    fn prompt_name_rejects_path_components() {
+        assert!(validate_prompt_name("a/b").is_err());
+        assert!(validate_prompt_name("..").is_err());
+        assert!(validate_prompt_name("").is_err());
+        assert!(validate_prompt_name("ok-name").is_ok());
     }
 }

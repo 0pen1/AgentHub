@@ -14,7 +14,7 @@ export default function InstructionList({ instructions, activeName, onSelect, on
       <div className="px-3 pt-3 pb-2 flex items-center justify-between shrink-0">
         <span className="text-[11px] font-medium uppercase tracking-[0.05em]"
           style={{ color: 'var(--text-muted)' }}>
-          提示词 · {instructions.length}
+          系统指令 · {instructions.length}
         </span>
         <div className="flex items-center gap-1">
           <button onClick={onImport}
@@ -47,7 +47,7 @@ export default function InstructionList({ instructions, activeName, onSelect, on
         ))}
         {instructions.length === 0 && (
           <p className="text-xs px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>
-            还没有提示词
+            还没有系统指令
           </p>
         )}
       </div>

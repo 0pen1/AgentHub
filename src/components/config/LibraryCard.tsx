@@ -1,4 +1,4 @@
-import { Edit3, Trash2, Download, FolderInput } from "lucide-react";
+import { Edit3, Trash2, Download, FolderInput, Copy, Check } from "lucide-react";
 
 export interface TagChipsProps {
   tags: string[];
@@ -70,6 +70,10 @@ export interface LibraryCardProps {
   onDelete?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+  /** Copy the item's content to the clipboard (instruction cards). */
+  onCopy?: () => void;
+  /** True briefly after a copy — flips the icon to a check. */
+  copied?: boolean;
 }
 
 export default function LibraryCard({
@@ -86,6 +90,8 @@ export default function LibraryCard({
   onDelete,
   onExport,
   onImport,
+  onCopy,
+  copied,
 }: LibraryCardProps) {
   return (
     <div
@@ -104,6 +110,11 @@ export default function LibraryCard({
         {onImport && (
           <CardAction title="导入托管" onClick={onImport}>
             <FolderInput size={13} />
+          </CardAction>
+        )}
+        {onCopy && (
+          <CardAction title={copied ? "已复制" : "复制内容"} onClick={onCopy}>
+            {copied ? <Check size={13} /> : <Copy size={13} />}
           </CardAction>
         )}
         {onEdit && (

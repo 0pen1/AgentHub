@@ -30,4 +30,5 @@ dirs = "6"
 which = "7"
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2.189"
+tauri-plugin-clipboard-manager = "2.3.3"
 # fix-path-env not available on crates.io; PATH fix is done manually in lib.rs

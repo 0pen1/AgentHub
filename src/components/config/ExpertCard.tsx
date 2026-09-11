@@ -34,7 +34,7 @@ export default function ExpertCard({
   const summary = [
     preset.skills.length ? `${preset.skills.length} skill` : null,
     preset.mcps.length ? `${preset.mcps.length} MCP` : null,
-    preset.instructions.length ? `${preset.instructions.length} 提示词` : null,
+    preset.instructions.length ? `${preset.instructions.length} 系统指令` : null,
   ]
     .filter(Boolean)
     .join(" · ");
