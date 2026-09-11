@@ -43,6 +43,12 @@ impl AgentRegistry {
     pub fn get_agent(&self, id: &str) -> Option<AgentInfo> {
         self.scan_installed().into_iter().find(|a| a.id == id)
     }
+
+    /// Static definition lookup only — no `which`, no `--version` probe.
+    /// Use on latency-sensitive paths (restart) that just need the executable.
+    pub fn get_agent_def(&self, id: &str) -> Option<&'static crate::agent::adapters::AgentDef> {
+        KNOWN_AGENTS.iter().find(|def| def.id == id)
+    }
 }
 
 // --- Install probe cache ----------------------------------------------------

@@ -359,10 +359,12 @@ pub fn restart_session(
         )
         .map_err(|e| e.to_string())?;
 
-    // 3. Look up agent executable
+    // 3. Look up agent executable — static table only, no install probe here.
+    //    (get_agent would scan+probe all agents; restart should feel instant.
+    //    If the binary vanished since launch, pty_attach fails and reports it.)
     let registry = AgentRegistry::new();
     let agent = registry
-        .get_agent(&agent_id)
+        .get_agent_def(&agent_id)
         .ok_or("Agent not found")?;
 
     // 4. Stage the launch (PTY is spawned later by pty_attach at real terminal size)
@@ -373,7 +375,7 @@ pub fn restart_session(
         pty_mgr.remove(&session_id);
         pty_mgr.stage_prepared(
             &session_id,
-            agent.executable.clone(),
+            agent.executable.to_string(),
             launch_args,
             work_dir.clone(),
             env_overrides,

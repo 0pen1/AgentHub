@@ -54,3 +54,12 @@ input[type="checkbox"] {
 .transition-smooth {
   transition: all 0.15s ease;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

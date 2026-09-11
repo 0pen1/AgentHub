@@ -20,13 +20,15 @@ const AGENT_COLORS: Record<string, string> = {
 interface Props {
   sessions: SessionInfo[];
   activeId: string | null;
+  /** Sessions currently starting up (resume/restart in flight) — shows a pulsing dot. */
+  startingIds?: Record<string, boolean>;
   /** Selecting an exited session auto-resumes it — onSelect handles both */
   onSelect: (id: string) => void;
   onKill?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
-export default function SessionTree({ sessions, activeId, onSelect, onDelete }: Props) {
+export default function SessionTree({ sessions, activeId, startingIds = {}, onSelect, onDelete }: Props) {
   if (sessions.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -43,6 +45,7 @@ export default function SessionTree({ sessions, activeId, onSelect, onDelete }: 
         const isActive = activeId === session.id;
         const agentColor = AGENT_COLORS[session.agent_id] || "#6b7280";
         const isRunning = session.status === "running";
+        const isStarting = !!startingIds[session.id];
         return (
           <button
             key={session.id}
@@ -51,7 +54,7 @@ export default function SessionTree({ sessions, activeId, onSelect, onDelete }: 
             style={{
               background: isActive ? 'var(--bg-tertiary)' : 'transparent',
             }}
-            title={isRunning ? undefined : "已退出 · 点击恢复会话"}
+            title={isStarting ? "正在恢复会话…" : isRunning ? undefined : "已退出 · 点击恢复会话"}
           >
             {isActive && (
               <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r"
@@ -73,9 +76,14 @@ export default function SessionTree({ sessions, activeId, onSelect, onDelete }: 
               <span className="flex items-center gap-1.5 shrink-0">
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: STATUS_COLORS[session.status] || '#9e9eb0' }}
+                  style={{
+                    background: STATUS_COLORS[session.status] || '#9e9eb0',
+                    ...(isStarting
+                      ? { animation: 'pulse-dot 1s ease-in-out infinite' }
+                      : {}),
+                  }}
                 />
-                {!isRunning && (
+                {!isRunning && !isStarting && (
                   <span
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-[var(--bg-tertiary)]"
                     style={{ color: 'var(--accent-red, #ef4444)' }}

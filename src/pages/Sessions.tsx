@@ -29,9 +29,13 @@ const writeFns = new Map<string, (data: Uint8Array) => void>();
 const unlisteners = new Map<string, UnlistenFn[]>();
 // Set by the mounted Sessions page so pty-closed can update live UI state.
 let notifyClosed: ((sessionId: string) => void) | null = null;
+// Set by the mounted Sessions page so the first PTY chunk can clear the
+// "starting up" loading state for the session being (re)started.
+let notifyFirstOutput: ((sessionId: string) => void) | null = null;
 
 function handlePtyOutput(sessionId: string, b64: string) {
   if (!b64) return;
+  notifyFirstOutput?.(sessionId);
   const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const writeFn = writeFns.get(sessionId);
   if (writeFn) {
@@ -75,6 +79,10 @@ export default function Sessions() {
   const [restartTicks, setRestartTicks] = useState<Record<string, number>>({});
   // In-flight guard to prevent double-restart on fast double-click.
   const restartingRef = useRef<Set<string>>(new Set());
+  // "Agent is starting" state: from click/resume until the first PTY bytes
+  // reach the terminal (CLI startup + --resume of a big transcript can take
+  // seconds — show it, don't sit on a black screen).
+  const [starting, setStarting] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -99,8 +107,11 @@ export default function Sessions() {
       setSessions((prev) =>
         prev.map((s) => (s.id === sid ? { ...s, status: "exited" } : s))
       );
+    notifyFirstOutput = (sid) =>
+      setStarting((prev) => (prev[sid] ? { ...prev, [sid]: false } : prev));
     return () => {
       notifyClosed = null;
+      notifyFirstOutput = null;
     };
   }, []);
 
@@ -156,6 +167,7 @@ export default function Sessions() {
       if (!target || target.status === "running") return;
       if (restartingRef.current.has(sessionId)) return;
       restartingRef.current.add(sessionId);
+      setStarting((prev) => ({ ...prev, [sessionId]: true }));
       try {
         await invoke("restart_session", { sessionId });
         // Clear buffered output from the previous run — the new run starts fresh
@@ -163,6 +175,7 @@ export default function Sessions() {
         setRestartTicks((t) => ({ ...t, [sessionId]: (t[sessionId] || 0) + 1 }));
         await refreshSessions();
       } catch (err) {
+        setStarting((prev) => ({ ...prev, [sessionId]: false }));
         console.error("Auto-resume failed:", err);
         alert(`继续会话失败: ${err}`);
       } finally {
@@ -244,6 +257,7 @@ export default function Sessions() {
           <SessionTree
             sessions={sessions}
             activeId={activeSession}
+            startingIds={starting}
             onSelect={handleSelect}
             onKill={handleKill}
             onDelete={handleDelete}
@@ -282,7 +296,7 @@ export default function Sessions() {
               </div>
 
               {/* Terminal */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden relative">
                 <Terminal
                   key={`${activeSessionInfo.id}-${restartTicks[activeSessionInfo.id] || 0}`}
                   sessionId={activeSessionInfo.id}
@@ -291,6 +305,27 @@ export default function Sessions() {
                   onData={(data) => handleTerminalData(activeSessionInfo.id, data)}
                   onResize={(cols, rows) => handleTerminalResize(activeSessionInfo.id, cols, rows)}
                 />
+                {starting[activeSessionInfo.id] && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{ background: 'rgba(30,30,30,0.55)' }}
+                  >
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
+                      style={{ background: 'rgba(40,40,42,0.95)' }}>
+                      <span
+                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        style={{
+                          border: '2px solid rgba(255,255,255,0.2)',
+                          borderTopColor: '#7b8cff',
+                          animation: 'spin 0.8s linear infinite',
+                        }}
+                      />
+                      <span className="text-[12px]" style={{ color: '#d4d4d4' }}>
+                        正在启动 {activeSessionInfo.agent_name}…
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
