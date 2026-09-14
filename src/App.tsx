@@ -27,7 +27,7 @@ type UpdateState =
   | { phase: "installed" }
   | { phase: "error"; message: string };
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "0.2.0";
 
 export default function App() {
   const location = useLocation();

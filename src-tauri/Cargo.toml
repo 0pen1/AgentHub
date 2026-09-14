@@ -1,6 +1,6 @@
 [package]
 name = "agenthub"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multi-agent CLI manager desktop app"
 authors = ["AgentHub"]
 edition = "2021"
