@@ -1,8 +1,16 @@
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { SquarePen, MessageSquare, Settings2 } from "lucide-react";
+import { SquarePen, MessageSquare, Settings2, RefreshCw, ArrowUpCircle } from "lucide-react";
 import Launcher from "./pages/Launcher";
 import Sessions from "./pages/Sessions";
 import ConfigLib from "./pages/ConfigLib";
+import {
+  checkForUpdate,
+  downloadAndInstall,
+  relaunchApp,
+  type UpdateProgress,
+} from "./lib/updater";
+import type { Update } from "@tauri-apps/plugin-updater";
 
 const navItems = [
   { path: "/", icon: SquarePen, label: "新会话" },
@@ -10,9 +18,51 @@ const navItems = [
   { path: "/config", icon: Settings2, label: "配置管理" },
 ];
 
+type UpdateState =
+  | { phase: "idle" }
+  | { phase: "checking" }
+  | { phase: "up-to-date" }
+  | { phase: "available"; update: Update }
+  | { phase: "downloading"; received: number; total?: number }
+  | { phase: "installed" }
+  | { phase: "error"; message: string };
+
+const APP_VERSION = "0.1.0";
+
 export default function App() {
   const location = useLocation();
   const currentPath = location.pathname;
+  const [updateState, setUpdateState] = useState<UpdateState>({ phase: "idle" });
+
+  const runUpdateCheck = async () => {
+    if (updateState.phase === "checking" || updateState.phase === "downloading") return;
+    setUpdateState({ phase: "checking" });
+    try {
+      const update = await checkForUpdate();
+      setUpdateState(
+        update ? { phase: "available", update } : { phase: "up-to-date" },
+      );
+    } catch (err) {
+      setUpdateState({ phase: "error", message: String(err) });
+    }
+  };
+
+  const runUpdateInstall = async (update: Update) => {
+    setUpdateState({ phase: "downloading", received: 0 });
+    const onProgress = ({ received, total }: UpdateProgress) => {
+      setUpdateState((prev) =>
+        prev.phase === "downloading" && received >= 0
+          ? { phase: "downloading", received, total: total ?? prev.total }
+          : prev,
+      );
+    };
+    try {
+      await downloadAndInstall(update, onProgress);
+      setUpdateState({ phase: "installed" });
+    } catch (err) {
+      setUpdateState({ phase: "error", message: String(err) });
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen" style={{ background: 'var(--bg-primary)' }}>
@@ -75,10 +125,76 @@ export default function App() {
           </p>
         </nav>
 
-        {/* Footer */}
-        <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderTop: '1px solid var(--border-light)' }}>
-          <Settings2 size={14} style={{ color: 'var(--text-muted)' }} />
-          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>AgentHub v0.1.0</span>
+        {/* Footer: version + update check */}
+        <div className="px-4 py-2.5 flex flex-col gap-1" style={{ borderTop: '1px solid var(--border-light)' }}>
+          <div className="flex items-center gap-2">
+            <Settings2 size={14} style={{ color: 'var(--text-muted)' }} />
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>AgentHub v{APP_VERSION}</span>
+            <button
+              onClick={runUpdateCheck}
+              disabled={updateState.phase === "checking" || updateState.phase === "downloading"}
+              className="ml-auto flex items-center gap-1 text-[11px] rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-tertiary)] disabled:opacity-40"
+              style={{ color: 'var(--text-muted)' }}
+              title="检查更新"
+            >
+              <RefreshCw size={11}
+                style={updateState.phase === "checking" ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+            </button>
+          </div>
+
+          {/* Update status line */}
+          {updateState.phase === "up-to-date" && (
+            <span className="text-[11px]" style={{ color: 'var(--accent-green)' }}>已是最新版本</span>
+          )}
+          {updateState.phase === "error" && (
+            <span className="text-[11px] truncate" style={{ color: 'var(--accent-red)' }} title={updateState.message}>
+              检查失败：{updateState.message.slice(0, 60)}
+            </span>
+          )}
+          {updateState.phase === "available" && (
+            <div className="flex items-center gap-1.5">
+              <ArrowUpCircle size={12} style={{ color: 'var(--accent-yellow)' }} />
+              <span className="text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                可更新到 v{updateState.update.version}
+              </span>
+              <button
+                onClick={() => runUpdateInstall(updateState.update)}
+                className="ml-auto text-[11px] px-2 py-0.5 rounded-md text-white"
+                style={{ background: 'var(--accent-blue)' }}
+              >
+                更新
+              </button>
+            </div>
+          )}
+          {updateState.phase === "downloading" && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                下载中{updateState.total ? ` ${Math.round((updateState.received / updateState.total) * 100)}%` : "…"}
+              </span>
+              <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--bg-tertiary)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: updateState.total
+                      ? `${Math.min(100, (updateState.received / updateState.total) * 100)}%`
+                      : '40%',
+                    background: 'var(--accent-blue)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {updateState.phase === "installed" && (
+            <button
+              onClick={relaunchApp}
+              className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md text-white w-fit"
+              style={{ background: 'var(--accent-green)' }}
+              title="重启以完成安装"
+            >
+              <RefreshCw size={11} />
+              安装完成 — 点击重启
+            </button>
+          )}
         </div>
       </aside>
 
